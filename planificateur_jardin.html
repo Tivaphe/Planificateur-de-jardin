@@ -114,6 +114,35 @@
         canvas.mode-moving { cursor: grab; }
         canvas.mode-deleting { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size: 24px;'><text y='24' x='0'>❌</text></svg>") 16 16, auto; }
         canvas.grid-placement-mode { cursor: cell; }
+
+        /* --- Emoji Picker --- */
+        #emoji-picker {
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 8px;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+            z-index: 100;
+        }
+        .emoji-picker-hidden {
+            display: none !important;
+        }
+        #emoji-picker button {
+            background-color: transparent;
+            border: none;
+            padding: 4px;
+            font-size: 24px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        #emoji-picker button:hover {
+            background-color: #f0f0f0;
+        }
     </style>
 </head>
 <body>
@@ -233,6 +262,8 @@
         <canvas id="gardenCanvas"></canvas>
     </div>
 
+    <div id="emoji-picker" class="emoji-picker-hidden"></div>
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('gardenCanvas');
@@ -262,6 +293,13 @@
         const plantModeAddButton = document.getElementById('plantModeAdd');
         const plantModeMoveButton = document.getElementById('plantModeMove');
         const plantModeDeleteButton = document.getElementById('plantModeDelete');
+        const emojiPicker = document.getElementById('emoji-picker');
+        const plantEmojiInput = document.getElementById('plantEmoji');
+
+        const GARDEN_EMOJIS = [
+            '🍅', '🥕', '🥬', '🍓', '🌽', '🌶️', '🥦', '🍇', '🍉', '🌻', '🌳', '🥔',
+            '🍆', '🥒', '🫑', '🧅', '🍄', '🌹', '🌷', '🌿', '🍎', '🍐', '🍊', '🍋'
+        ];
 
         // --- État de l'application ---
         let plantAction = 'placing'; // 'placing', 'moving', 'deleting'
@@ -475,6 +513,34 @@
         modePlantsButton.addEventListener('click', () => setMainMode('placing'));
         modeIrrigationButton.addEventListener('click', () => setMainMode('irrigation'));
 
+        // --- Logique du sélecteur d'emojis ---
+        function populateEmojiPicker() {
+            emojiPicker.innerHTML = '';
+            GARDEN_EMOJIS.forEach(emoji => {
+                const button = document.createElement('button');
+                button.textContent = emoji;
+                button.onclick = () => {
+                    plantEmojiInput.value = emoji;
+                    emojiPicker.classList.add('emoji-picker-hidden');
+                };
+                emojiPicker.appendChild(button);
+            });
+        }
+
+        plantEmojiInput.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const rect = plantEmojiInput.getBoundingClientRect();
+            emojiPicker.style.top = `${rect.bottom + window.scrollY}px`;
+            emojiPicker.style.left = `${rect.left + window.scrollX}px`;
+            emojiPicker.classList.toggle('emoji-picker-hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!emojiPicker.contains(e.target) && e.target !== plantEmojiInput) {
+                emojiPicker.classList.add('emoji-picker-hidden');
+            }
+        });
+
         // --- GESTION DE LA SOURIS ---
         canvas.addEventListener('click', (e) => {
             if (isDragging || isScaling) return;
@@ -615,6 +681,7 @@
 
         // Initialisation de la page
         updateAllUI();
+        populateEmojiPicker();
         
         // ... (autres écouteurs d'événements comme setScale, clear, drag&drop, etc. sont similaires aux versions précédentes et omis pour la brièveté de l'explication mais présents dans le code)
         // Le code complet pour les autres boutons est ici pour la fonctionnalité

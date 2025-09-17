@@ -8,10 +8,13 @@ Une application web "front-end" pure (HTML, CSS, JavaScript vanilla) pour planif
 ## ✨ Fonctionnalités
 
 - **Chargement d'Image de Fond** : Utilisez un plan satellite, une photo de drone ou un plan cadastral comme base pour votre jardin.
-- **Mise à l'Échelle Précise** : Définissez une échelle en traçant une ligne sur une distance connue (ex: un mur de 10m) pour que toutes les mesures soient réalistes.
+- **Mise à l'Échelle Précise** : Définissez une échelle en traçant une ligne sur une distance connue (ex: un mur de 10m). Une ligne de mesure visuelle vous guide pendant le tracé.
 - **Plantes Personnalisables** : Ajoutez vos propres types de plantes avec un nom, une couleur, un emoji et l'espacement recommandé.
+- **Actions sur les Plantes** :
+    - **Ajouter** : Sélectionnez un type de plante et cliquez sur le plan pour l'ajouter.
+    - **Déplacer** : Activez le mode "Déplacer" pour bouger les plantes par glisser-déposer (`drag & drop`).
+    - **Supprimer** : Activez le mode "Supprimer" pour effacer une plante d'un simple clic, ou utilisez le clic droit comme raccourci à tout moment.
 - **Représentation Visuelle** : Chaque plante est représentée par un cercle translucide correspondant à son encombrement (diamètre = espacement), avec son emoji au centre.
-- **Manipulation Intuitive** : Déplacez les plantes par glisser-déposer (`drag & drop`) et supprimez-les avec un clic droit.
 - **Placement en Grille Automatique** : Placez des dizaines de plantes parfaitement alignées en un seul clic en définissant un nombre de lignes et de colonnes.
 - **Planification de l'Irrigation** : Dessinez votre système de goutte-à-goutte point par point, créez des ramifications et obtenez la longueur totale de tuyau nécessaire en temps réel.
 - **Compteurs Intégrés** : Gardez un œil sur le nombre total de plantes et le compte pour chaque variété.
