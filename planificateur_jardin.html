@@ -110,7 +110,9 @@
         canvas.mode-placing { cursor: crosshair; }
         canvas.mode-irrigation { cursor: copy; }
         canvas.scaling-mode { cursor: cell; }
-        canvas.dragging-mode { cursor: move; }
+        canvas.dragging-mode { cursor: grabbing; }
+        canvas.mode-moving { cursor: grab; }
+        canvas.mode-deleting { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size: 24px;'><text y='24' x='0'>❌</text></svg>") 16 16, auto; }
         canvas.grid-placement-mode { cursor: cell; }
     </style>
 </head>
@@ -164,8 +166,19 @@
                     <div id="plant-types-list"></div>
                 </div>
             </details>
+            <details open>
+                <summary>4. Action sur les plantes</summary>
+                <div class="details-content">
+                    <label>Cliquez pour choisir une action :</label>
+                    <div class="button-group">
+                        <button id="plantModeAdd" class="active-mode button-secondary">Ajouter</button>
+                        <button id="plantModeMove" class="button-secondary">Déplacer</button>
+                        <button id="plantModeDelete" class="button-secondary">Supprimer</button>
+                    </div>
+                </div>
+            </details>
             <details>
-                <summary>4. Placement en grille</summary>
+                <summary>5. Placement en grille</summary>
                 <div class="details-content">
                     <div class="input-group">
                         <div>
@@ -246,19 +259,23 @@
         const gridPlacementButton = document.getElementById('gridPlacementButton');
         const gridRowsInput = document.getElementById('gridRows');
         const gridColsInput = document.getElementById('gridCols');
+        const plantModeAddButton = document.getElementById('plantModeAdd');
+        const plantModeMoveButton = document.getElementById('plantModeMove');
+        const plantModeDeleteButton = document.getElementById('plantModeDelete');
 
         // --- État de l'application ---
+        let plantAction = 'placing'; // 'placing', 'moving', 'deleting'
         let backgroundImage = null;
         let scale = { pixels: 0, meters: 0, pixelsPerMeter: 0 };
         let plantTypes = {};
         let placedPlants = [];
         let irrigationSystem = { pipes: [] }; // NOUVELLE STRUCTURE POUR L'IRRIGATION
         let selectedPlantType = null;
-        let currentMode = 'placing'; // 'placing' ou 'irrigation'
+        let mainMode = 'placing'; // 'placing' ou 'irrigation'
         let placementSubMode = 'single'; // 'single' ou 'grid'
 
         // --- États d'interaction ---
-        let isScaling = false, scaleStartPoint = null;
+        let isScaling = false, scaleStartPoint = null, scaleCurrentMousePos = null;
         let isDragging = false, draggedPlant = null, dragOffsetX, dragOffsetY;
 
         // ===================================
@@ -295,7 +312,17 @@
                 }
             });
 
-            if (isScaling && scaleStartPoint) { /* ... dessin ligne de mesure ... */ }
+            // Dessin de la ligne de mesure pendant la mise à l'échelle
+            if (isScaling && scaleStartPoint && scaleCurrentMousePos) {
+                ctx.beginPath();
+                ctx.moveTo(scaleStartPoint.x, scaleStartPoint.y);
+                ctx.lineTo(scaleCurrentMousePos.x, scaleCurrentMousePos.y);
+                ctx.strokeStyle = '#f57c00'; // Orange vif
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]); // Réinitialiser pour les autres traits
+            }
         }
         
         // ... (autres fonctions de mise à jour UI) ...
@@ -304,6 +331,7 @@
             updatePlacedPlantsList();
             updatePipeLength();
             updateModeUI();
+            updateScaleInfo();
         }
         
         function updatePlantTypesUI() {
@@ -318,7 +346,7 @@
                 if (name === selectedPlantType) div.classList.add('selected');
                 div.onclick = () => {
                     selectedPlantType = name;
-                    setMode('placing');
+                    setMainMode('placing');
                     updatePlantTypesUI();
                 };
                 plantTypesListDiv.appendChild(div);
@@ -342,12 +370,22 @@
              plantListContainer.innerHTML = '<ul>' + placedPlants.map((p,i) => `<li>${i+1}: ${p.typeName}</li>`).join('') + '</ul>';
         }
 
+        function updateScaleInfo() {
+            if (scale.pixelsPerMeter > 0) {
+                scaleInfo.textContent = `Échelle : 1m = ${scale.pixelsPerMeter.toFixed(2)} pixels.`;
+                scaleInfo.style.backgroundColor = '#e9f5e9';
+            } else {
+                scaleInfo.textContent = 'Échelle non définie.';
+                scaleInfo.style.backgroundColor = '#e9f5e9';
+            }
+        }
+
         // ===================================
         // --- GESTION DES MODES & ÉVÉNEMENTS ---
         // ===================================
         
-        function setMode(mode) {
-            currentMode = mode;
+        function setMainMode(mode) {
+            mainMode = mode;
             // Si on quitte le mode plante, on désactive le mode grille
             if (mode !== 'placing') {
                 placementSubMode = 'single';
@@ -358,18 +396,25 @@
         }
         
         function updateModeUI() {
-            plantControls.style.display = currentMode === 'placing' ? 'block' : 'none';
-            irrigationControls.style.display = currentMode === 'irrigation' ? 'block' : 'none';
-            modePlantsButton.classList.toggle('active-mode', currentMode === 'placing');
-            modeIrrigationButton.classList.toggle('active-mode', currentMode === 'irrigation');
+            plantControls.style.display = mainMode === 'placing' ? 'block' : 'none';
+            irrigationControls.style.display = mainMode === 'irrigation' ? 'block' : 'none';
+            modePlantsButton.classList.toggle('active-mode', mainMode === 'placing');
+            modeIrrigationButton.classList.toggle('active-mode', mainMode === 'irrigation');
             updateCanvasCursor();
         }
         
         function updateCanvasCursor() {
-            canvas.classList.remove('mode-placing', 'mode-irrigation', 'grid-placement-mode');
-            if (currentMode === 'placing') {
-                canvas.classList.add(placementSubMode === 'grid' ? 'grid-placement-mode' : 'mode-placing');
-            } else if (currentMode === 'irrigation') {
+            canvas.classList.remove('mode-placing', 'mode-irrigation', 'grid-placement-mode', 'mode-moving', 'mode-deleting');
+            if (mainMode === 'placing') {
+                if (placementSubMode === 'grid') {
+                    canvas.classList.add('grid-placement-mode');
+                } else {
+                    // Le curseur dépend de l'action sur les plantes
+                    if (plantAction === 'placing') canvas.classList.add('mode-placing');
+                    else if (plantAction === 'moving') canvas.classList.add('mode-moving');
+                    else if (plantAction === 'deleting') canvas.classList.add('mode-deleting');
+                }
+            } else if (mainMode === 'irrigation') {
                 canvas.classList.add('mode-irrigation');
             }
         }
@@ -415,46 +460,73 @@
             updateCanvasCursor();
         });
 
+        function setPlantAction(mode) {
+            plantAction = mode;
+            plantModeAddButton.classList.toggle('active-mode', mode === 'placing');
+            plantModeMoveButton.classList.toggle('active-mode', mode === 'moving');
+            plantModeDeleteButton.classList.toggle('active-mode', mode === 'deleting');
+            updateCanvasCursor();
+        }
+
+        plantModeAddButton.addEventListener('click', () => setPlantAction('placing'));
+        plantModeMoveButton.addEventListener('click', () => setPlantAction('moving'));
+        plantModeDeleteButton.addEventListener('click', () => setPlantAction('deleting'));
+
+        modePlantsButton.addEventListener('click', () => setMainMode('placing'));
+        modeIrrigationButton.addEventListener('click', () => setMainMode('irrigation'));
+
         // --- GESTION DE LA SOURIS ---
         canvas.addEventListener('click', (e) => {
             if (isDragging || isScaling) return;
             const pos = getMousePos(canvas, e);
 
-            if (currentMode === 'placing') {
-                if (!selectedPlantType) return alert("Sélectionnez un type de plante.");
-                if (scale.pixelsPerMeter <= 0) return alert("Définissez l'échelle d'abord.");
-                
-                if (placementSubMode === 'single') {
-                    placeSinglePlant(pos);
-                } else {
-                    placeGrid(pos);
-                    // Repasser en mode single après placement
-                    placementSubMode = 'single';
-                    gridPlacementButton.classList.remove('grid-active');
-                    gridPlacementButton.textContent = 'Activer le mode Grille';
-                    updateCanvasCursor();
-                }
+            if (mainMode === 'placing') {
+                // Logique dépend de l'action sélectionnée
+                if (plantAction === 'placing') {
+                    if (!selectedPlantType) return alert("Sélectionnez un type de plante.");
+                    if (scale.pixelsPerMeter <= 0) return alert("Définissez l'échelle d'abord.");
 
-            } else if (currentMode === 'irrigation') {
-                // Chercher un point existant pour démarrer une branche
+                    if (placementSubMode === 'single') {
+                        placeSinglePlant(pos);
+                    } else {
+                        placeGrid(pos);
+                        placementSubMode = 'single'; // Repasser en mode single après placement
+                        gridPlacementButton.classList.remove('grid-active');
+                        gridPlacementButton.textContent = 'Activer le mode Grille';
+                        updateCanvasCursor();
+                    }
+                } else if (plantAction === 'deleting') {
+                    const clicked = findClickedPlant(pos);
+                    if (clicked) {
+                        placedPlants.splice(clicked.index, 1);
+                    }
+                }
+                // En mode 'moving', le click ne fait rien, c'est le drag qui compte
+
+            } else if (mainMode === 'irrigation') {
                 const existingPoint = findClosestPipeVertex(pos, 10);
                 if (existingPoint) {
-                    irrigationSystem.pipes.push([existingPoint]); // Nouvelle branche
+                    irrigationSystem.pipes.push([existingPoint]);
                 } else {
-                    if (irrigationSystem.pipes.length === 0) {
-                        irrigationSystem.pipes.push([]); // Premier tuyau
-                    }
+                    if (irrigationSystem.pipes.length === 0) irrigationSystem.pipes.push([]);
                     irrigationSystem.pipes[irrigationSystem.pipes.length - 1].push(pos);
                 }
             }
+
             draw();
             updateAllUI();
         });
         
         canvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            if (currentMode === 'placing') { /* ... logique suppression plante ... */ } 
-            else if (currentMode === 'irrigation' && irrigationSystem.pipes.length > 0) {
+            if (mainMode === 'placing') {
+                const pos = getMousePos(canvas, e);
+                const clicked = findClickedPlant(pos);
+                if (clicked) {
+                    placedPlants.splice(clicked.index, 1);
+                }
+            }
+            else if (mainMode === 'irrigation' && irrigationSystem.pipes.length > 0) {
                 let lastPipe = irrigationSystem.pipes[irrigationSystem.pipes.length - 1];
                 if(lastPipe.length > 0) lastPipe.pop();
                 if(lastPipe.length <= 1) { // Si la branche n'a plus qu'un point (ou 0), on la supprime
@@ -504,6 +576,18 @@
             return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
         }
 
+        function findClickedPlant(pos) {
+            // Itérer en sens inverse pour que les plantes au-dessus soient prioritaires
+            for (let i = placedPlants.length - 1; i >= 0; i--) {
+                const plant = placedPlants[i];
+                const distance = Math.hypot(pos.x - plant.x, pos.y - plant.y);
+                if (distance < plant.radiusPx) {
+                    return { plant, index: i };
+                }
+            }
+            return null;
+        }
+
         // --- SAUVEGARDE ET CHARGEMENT ---
         saveButton.addEventListener('click', () => {
             const dataToSave = {
@@ -534,14 +618,88 @@
         
         // ... (autres écouteurs d'événements comme setScale, clear, drag&drop, etc. sont similaires aux versions précédentes et omis pour la brièveté de l'explication mais présents dans le code)
         // Le code complet pour les autres boutons est ici pour la fonctionnalité
-        setScaleButton.addEventListener('click', () => { /* ... */ });
+        setScaleButton.addEventListener('click', () => {
+            if (!backgroundImage) {
+                alert("Veuillez d'abord charger une image de fond.");
+                return;
+            }
+            isScaling = true;
+            canvas.classList.add('scaling-mode');
+            scaleInfo.textContent = `MODE ÉCHELLE : Tracez une ligne sur l'image correspondant à ${refDistanceInput.value}m.`;
+            scaleInfo.style.backgroundColor = '#ffecb3';
+            setScaleButton.classList.add('active-mode');
+        });
         clearPipeButton.addEventListener('click', () => { irrigationSystem.pipes = []; draw(); updatePipeLength(); });
         clearButton.addEventListener('click', () => { if(confirm('Tout effacer ?')){ placedPlants = []; irrigationSystem = {pipes:[]}; draw(); updateAllUI(); } });
         exportButton.addEventListener('click', () => { const link = document.createElement('a'); link.download = 'plan_jardin.png'; link.href = canvas.toDataURL(); link.click(); });
         // Drag & drop etc.
-        canvas.addEventListener('mousedown', (e) => { if (e.button !== 0) return; const pos = getMousePos(canvas, e); if (isScaling) { scaleStartPoint = pos; return; } if (currentMode === 'placing') { for (let i = placedPlants.length - 1; i >= 0; i--) { const plant = placedPlants[i]; if (Math.hypot(pos.x - plant.x, pos.y - plant.y) < plant.radiusPx) { isDragging = true; draggedPlant = plant; dragOffsetX = pos.x - plant.x; dragOffsetY = pos.y - plant.y; canvas.classList.add('dragging-mode'); return; } } } });
-        canvas.addEventListener('mousemove', (e) => { if (isScaling && scaleStartPoint) { draw(); } if (isDragging && draggedPlant) { const pos = getMousePos(canvas, e); draggedPlant.x = pos.x - dragOffsetX; draggedPlant.y = pos.y - dragOffsetY; draw(); } });
-        canvas.addEventListener('mouseup', (e) => { if (e.button !== 0) return; if (isScaling && scaleStartPoint) { const endPos = getMousePos(canvas, e); const pixelDist = Math.hypot(endPos.x - scaleStartPoint.x, endPos.y - scaleStartPoint.y); if (pixelDist > 5) { scale = { pixels: pixelDist, meters: parseFloat(refDistanceInput.value), pixelsPerMeter: pixelDist / parseFloat(refDistanceInput.value) }; updateAllUI(); } isScaling = false; scaleStartPoint = null; canvas.classList.remove('scaling-mode'); draw(); } if(isDragging) { isDragging = false; draggedPlant = null; canvas.classList.remove('dragging-mode'); } });
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // Seul le clic principal
+            const pos = getMousePos(canvas, e);
+
+            if (isScaling) {
+                scaleStartPoint = pos;
+                return;
+            }
+
+            if (mainMode === 'placing' && plantAction === 'moving') {
+                const clicked = findClickedPlant(pos);
+                if (clicked) {
+                    isDragging = true;
+                    draggedPlant = clicked.plant;
+                    dragOffsetX = pos.x - draggedPlant.x;
+                    dragOffsetY = pos.y - draggedPlant.y;
+                    canvas.classList.add('dragging-mode');
+                }
+            }
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            const pos = getMousePos(canvas, e);
+            // Mise à jour de la ligne de mesure en temps réel
+            if (isScaling && scaleStartPoint) {
+                scaleCurrentMousePos = pos;
+                draw();
+            }
+            // Mettre à jour la position de la plante déplacée
+            if (isDragging && draggedPlant) {
+                draggedPlant.x = pos.x - dragOffsetX;
+                draggedPlant.y = pos.y - dragOffsetY;
+                draw();
+            }
+        });
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button !== 0) return; // Only main button
+
+            // --- Fin de la mise à l'échelle ---
+            if (isScaling && scaleStartPoint) {
+                const endPos = getMousePos(canvas, e);
+                const pixelDist = Math.hypot(endPos.x - scaleStartPoint.x, endPos.y - scaleStartPoint.y);
+                const realDist = parseFloat(refDistanceInput.value);
+
+                if (pixelDist > 5 && realDist > 0) {
+                    scale = {
+                        pixels: pixelDist,
+                        meters: realDist,
+                        pixelsPerMeter: pixelDist / realDist
+                    };
+                }
+
+                isScaling = false;
+                scaleStartPoint = null;
+                scaleCurrentMousePos = null; // Nettoyer la position
+                canvas.classList.remove('scaling-mode');
+                setScaleButton.classList.remove('active-mode');
+                updateAllUI(); // Met à jour l'info de l'échelle et autres
+                draw();
+            }
+
+            // --- Fin du Drag & Drop ---
+            if (isDragging) {
+                isDragging = false;
+                draggedPlant = null;
+                canvas.classList.remove('dragging-mode');
+            }
+        });
 
     });
     </script>
