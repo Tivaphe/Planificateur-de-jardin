@@ -1,9 +1,16 @@
+[English Version](README.en.md)
+
 # 🌿 Planificateur de Jardin Visuel
 
-Une application web "front-end" pure (HTML, CSS, JavaScript vanilla) pour planifier visuellement un potager ou un jardin. Cet outil fonctionne entièrement en local dans votre navigateur, ne nécessite aucune installation ni connexion internet, et se compose d'un unique fichier `html`.
+**Donnez vie au jardin de vos rêves !** Cette application web vous permet de concevoir votre potager ou vos massifs de manière visuelle, simple et intuitive. Entièrement "front-end" (HTML, CSS, JavaScript vanilla), elle fonctionne directement dans votre navigateur, sans installation ni connexion internet. Un seul fichier `html` pour une portabilité maximale.
 
 ![Aperçu du planificateur de jardin](URL_DE_VOTRE_SCREENSHOT.png)
 *(Pensez à remplacer cette ligne par une vraie capture d'écran de votre projet !)*
+
+## 🚀 Accès Direct
+
+[**Lancer le Planificateur de Jardin (Démo Live)**](https://YOUR_USERNAME.github.io/YOUR_REPOSITORY/planificateur_jardin.html)
+*(Ce lien fonctionnera une fois l'application hébergée, par exemple avec GitHub Pages. Voir les instructions à la fin.)*
 
 ## ✨ Fonctionnalités
 
@@ -17,9 +24,11 @@ Une application web "front-end" pure (HTML, CSS, JavaScript vanilla) pour planif
 - **Représentation Visuelle** : Chaque plante est représentée par un cercle translucide correspondant à son encombrement (diamètre = espacement), avec son emoji au centre.
 - **Placement en Grille Automatique** : Placez des dizaines de plantes parfaitement alignées en un seul clic en définissant un nombre de lignes et de colonnes.
 - **Planification de l'Irrigation** : Dessinez votre système de goutte-à-goutte point par point, créez des ramifications et obtenez la longueur totale de tuyau nécessaire en temps réel.
+- **Dessin des Allées** : Tracez les chemins et allées de votre jardin et obtenez leur longueur totale.
+- **Calcul de Paillage** : Délimitez des zones polygonales pour calculer le volume de paillage (en litres) nécessaire en fonction de l'épaisseur souhaitée.
 - **Compteurs Intégrés** : Gardez un œil sur le nombre total de plantes et le compte pour chaque variété.
-- **Sauvegarde Locale** : Sauvegardez et chargez l'intégralité de votre plan (plantes, irrigation, échelle) directement dans votre navigateur via `localStorage`.
-- **Export en Image** : Exportez votre plan final (image de fond + plantes + irrigation) en tant que fichier PNG.
+- **Sauvegarde Locale** : Sauvegardez et chargez l'intégralité de votre plan (plantes, irrigation, échelle, etc.) directement dans votre navigateur via `localStorage`.
+- **Export en Image** : Exportez votre plan final (image de fond + tous les éléments dessinés) en tant que fichier PNG.
 - **Zéro Dépendance** : Construit avec du HTML5, CSS et JavaScript pur. Pas de framework, pas de librairie, pas de compilation. Léger, rapide et facile à modifier.
 
 ## 🚀 Comment l'utiliser
@@ -42,7 +51,6 @@ Le projet est volontairement contenu dans un seul fichier pour une portabilité 
 
 Ce projet peut encore évoluer ! Voici quelques idées :
 
-- [ ] Gestion de "zones" (carrés potagers, massifs) avec des polygones.
 - [ ] Rotation des grilles de placement.
 - [ ] Une bibliothèque de plantes pré-configurées (tomates, salades, etc.).
 - [ ] Une fonction Annuler/Rétablir (Undo/Redo).
