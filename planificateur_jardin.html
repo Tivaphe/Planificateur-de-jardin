@@ -115,6 +115,7 @@
         canvas.mode-deleting { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size: 24px;'><text y='24' x='0'>❌</text></svg>") 16 16, auto; }
         canvas.grid-placement-mode { cursor: cell; }
         canvas.mode-paths { cursor: copy; }
+        canvas.mode-mulching { cursor: crosshair; }
 
         /* --- Emoji Picker --- */
         #emoji-picker {
@@ -169,6 +170,7 @@
                 <button id="modePlantsButton" class="active-mode">Plantes</button>
                 <button id="modeIrrigationButton">Irrigation</button>
                 <button id="modePathsButton">Allées</button>
+                <button id="modeMulchButton">Paillage</button>
             </div>
         </details>
 
@@ -249,6 +251,20 @@
                 </div>
             </details>
         </div>
+
+        <div id="mulch-controls" style="display:none;">
+            <details open>
+                <summary>3. Paillage</summary>
+                <div class="details-content">
+                    <label for="mulchThickness">Épaisseur du paillage (cm):</label>
+                    <input type="number" id="mulchThickness" value="5" min="1">
+                    <p style="font-size:0.9em; margin: 10px 0 10px 0;">Cliquez pour dessiner une zone de paillage. Clic droit pour annuler le dernier point.</p>
+                    <button id="finishPolygonButton">Terminer la zone</button>
+                    <div id="mulch-info" style="margin-top:10px;">Volume requis : 0.00 litres</div>
+                    <button id="clearMulchButton" class="button-orange">Effacer le paillage</button>
+                </div>
+            </details>
+        </div>
         
         <div id="global-plant-count" style="font-weight:bold; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px; background-color: #f8f9fa; text-align: center;">
             Nombre total de plantes : 0
@@ -310,6 +326,12 @@
         const pathWidthInput = document.getElementById('pathWidth');
         const pathInfo = document.getElementById('path-info');
         const clearPathsButton = document.getElementById('clearPathsButton');
+        const modeMulchButton = document.getElementById('modeMulchButton');
+        const mulchControls = document.getElementById('mulch-controls');
+        const mulchThicknessInput = document.getElementById('mulchThickness');
+        const mulchInfo = document.getElementById('mulch-info');
+        const finishPolygonButton = document.getElementById('finishPolygonButton');
+        const clearMulchButton = document.getElementById('clearMulchButton');
 
         const GARDEN_EMOJIS = [
             '🍅', '🥕', '🥬', '🍓', '🌽', '🌶️', '🥦', '🍇', '🍉', '🌻', '🌳', '🥔',
@@ -324,6 +346,7 @@
         let placedPlants = [];
         let irrigationSystem = { pipes: [] };
         let pathSystem = { paths: [] };
+        let mulchSystem = { polygons: [], currentPolygon: [] };
         let selectedPlantType = null;
         let mainMode = 'placing'; // 'placing' ou 'irrigation'
         let placementSubMode = 'single'; // 'single' ou 'grid'
@@ -336,10 +359,57 @@
         // --- DESSIN & MISES À JOUR ---
         // ===================================
 
+        function createMulchPattern() {
+            const patternCanvas = document.createElement('canvas');
+            const patternCtx = patternCanvas.getContext('2d');
+            const size = 20;
+            patternCanvas.width = size;
+            patternCanvas.height = size;
+            patternCtx.fillStyle = 'rgba(210, 180, 140, 0.5)'; // Beige 50% transparent
+            patternCtx.fillRect(0, 0, size, size);
+            patternCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            patternCtx.beginPath();
+            patternCtx.arc(size / 4, size / 4, 1, 0, 2 * Math.PI);
+            patternCtx.arc(size * 3 / 4, size * 3 / 4, 1, 0, 2 * Math.PI);
+            patternCtx.fill();
+            return ctx.createPattern(patternCanvas, 'repeat');
+        }
+
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (backgroundImage) ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+
+            // --- 1. DESSINER LE PAILLAGE (en premier pour être en fond) ---
+            const mulchPattern = createMulchPattern();
+            ctx.fillStyle = mulchPattern;
             
+            // Dessiner les polygones finalisés
+            mulchSystem.polygons.forEach(polygon => {
+                if (polygon.length > 2) {
+                    ctx.beginPath();
+                    ctx.moveTo(polygon[0].x, polygon[0].y);
+                    for (let i = 1; i < polygon.length; i++) {
+                        ctx.lineTo(polygon[i].x, polygon[i].y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            });
+
+            // Dessiner le polygone en cours de création
+            if (mulchSystem.currentPolygon.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(mulchSystem.currentPolygon[0].x, mulchSystem.currentPolygon[0].y);
+                for (let i = 1; i < mulchSystem.currentPolygon.length; i++) {
+                    ctx.lineTo(mulchSystem.currentPolygon[i].x, mulchSystem.currentPolygon[i].y);
+                }
+                ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // --- 2. DESSINER LES AUTRES ÉLÉMENTS ---
+
             // Dessin de l'irrigation (avec branches)
             irrigationSystem.pipes.forEach(pipe => {
                 if (pipe.length > 1) {
@@ -404,6 +474,7 @@
             updateGlobalPlantCount();
             updatePipeLength();
             updatePathLength();
+            updateMulchVolume();
             updateModeUI();
             updateScaleInfo();
         }
@@ -449,6 +520,34 @@
             pathInfo.textContent = `Longueur totale : ${totalMeterLength.toFixed(2)} m`;
         }
 
+        function calculatePolygonArea(vertices) {
+            let area = 0;
+            for (let i = 0; i < vertices.length; i++) {
+                const j = (i + 1) % vertices.length;
+                area += vertices[i].x * vertices[j].y;
+                area -= vertices[j].x * vertices[i].y;
+            }
+            return Math.abs(area / 2);
+        }
+
+        function updateMulchVolume() {
+            if (scale.pixelsPerMeter <= 0) {
+                mulchInfo.textContent = 'Volume requis : 0.00 litres (échelle non définie)';
+                return;
+            }
+            let totalPixelArea = 0;
+            mulchSystem.polygons.forEach(polygon => {
+                totalPixelArea += calculatePolygonArea(polygon);
+            });
+
+            const totalSquareMeters = totalPixelArea / (scale.pixelsPerMeter * scale.pixelsPerMeter);
+            const thicknessMeters = parseInt(mulchThicknessInput.value, 10) / 100;
+            const volumeM3 = totalSquareMeters * thicknessMeters;
+            const volumeLiters = volumeM3 * 1000;
+
+            mulchInfo.textContent = `Volume requis : ${volumeLiters.toFixed(2)} litres`;
+        }
+
         function updateGlobalPlantCount() {
              globalPlantCountDiv.textContent = `Nombre total de plantes : ${placedPlants.length}`;
         }
@@ -482,15 +581,17 @@
             plantControls.style.display = mainMode === 'placing' ? 'block' : 'none';
             irrigationControls.style.display = mainMode === 'irrigation' ? 'block' : 'none';
             pathControls.style.display = mainMode === 'paths' ? 'block' : 'none';
+            mulchControls.style.display = mainMode === 'mulching' ? 'block' : 'none';
 
             modePlantsButton.classList.toggle('active-mode', mainMode === 'placing');
             modeIrrigationButton.classList.toggle('active-mode', mainMode === 'irrigation');
             modePathsButton.classList.toggle('active-mode', mainMode === 'paths');
+            modeMulchButton.classList.toggle('active-mode', mainMode === 'mulching');
             updateCanvasCursor();
         }
         
         function updateCanvasCursor() {
-            canvas.classList.remove('mode-placing', 'mode-irrigation', 'grid-placement-mode', 'mode-moving', 'mode-deleting', 'mode-paths');
+            canvas.classList.remove('mode-placing', 'mode-irrigation', 'grid-placement-mode', 'mode-moving', 'mode-deleting', 'mode-paths', 'mode-mulching');
             if (mainMode === 'placing') {
                 if (placementSubMode === 'grid') {
                     canvas.classList.add('grid-placement-mode');
@@ -504,6 +605,8 @@
                 canvas.classList.add('mode-irrigation');
             } else if (mainMode === 'paths') {
                 canvas.classList.add('mode-paths');
+            } else if (mainMode === 'mulching') {
+                canvas.classList.add('mode-mulching');
             }
         }
         
@@ -563,6 +666,7 @@
         modePlantsButton.addEventListener('click', () => setMainMode('placing'));
         modeIrrigationButton.addEventListener('click', () => setMainMode('irrigation'));
         modePathsButton.addEventListener('click', () => setMainMode('paths'));
+        modeMulchButton.addEventListener('click', () => setMainMode('mulching'));
 
         // --- Logique du sélecteur d'emojis ---
         function populateEmojiPicker() {
@@ -591,7 +695,7 @@
                 emojiPicker.classList.add('emoji-picker-hidden');
             }
         });
-        
+
         // --- GESTION DE LA SOURIS ---
         canvas.addEventListener('click', (e) => {
             if (isDragging || isScaling) return;
@@ -602,7 +706,7 @@
                 if (plantAction === 'placing') {
                     if (!selectedPlantType) return alert("Sélectionnez un type de plante.");
                     if (scale.pixelsPerMeter <= 0) return alert("Définissez l'échelle d'abord.");
-                    
+
                     if (placementSubMode === 'single') {
                         placeSinglePlant(pos);
                     } else {
@@ -639,8 +743,10 @@
                     }
                     pathSystem.paths[pathSystem.paths.length - 1].push(pos);
                 }
+            } else if (mainMode === 'mulching') {
+                mulchSystem.currentPolygon.push(pos);
             }
-            
+
             draw();
             updateAllUI();
         });
@@ -653,7 +759,7 @@
                 if (clicked) {
                     placedPlants.splice(clicked.index, 1);
                 }
-            } 
+            }
             else if (mainMode === 'irrigation' && irrigationSystem.pipes.length > 0) {
                 let lastPipe = irrigationSystem.pipes[irrigationSystem.pipes.length - 1];
                 if(lastPipe.length > 0) lastPipe.pop();
@@ -667,6 +773,8 @@
                 if(lastPath.length <= 1) { // Si la branche n'a plus qu'un point (ou 0), on la supprime
                     pathSystem.paths.pop();
                 }
+            } else if (mainMode === 'mulching' && mulchSystem.currentPolygon.length > 0) {
+                mulchSystem.currentPolygon.pop();
             }
             draw();
             updateAllUI();
@@ -737,7 +845,7 @@
         // --- SAUVEGARDE ET CHARGEMENT ---
         saveButton.addEventListener('click', () => {
             const dataToSave = {
-                scale, plantTypes, placedPlants, irrigationSystem, pathSystem
+                scale, plantTypes, placedPlants, irrigationSystem, pathSystem, mulchSystem
             };
             localStorage.setItem('gardenPlanAdvanced', JSON.stringify(dataToSave));
             alert('Plan sauvegardé !');
@@ -752,6 +860,7 @@
                 placedPlants = data.placedPlants;
                 irrigationSystem = data.irrigationSystem || { pipes: [] }; // compatibilité
                 pathSystem = data.pathSystem || { paths: [] }; // compatibilité
+                mulchSystem = data.mulchSystem || { polygons: [], currentPolygon: [] }; // compatibilité
                 draw();
                 updateAllUI();
                 alert("Plan chargé.");
@@ -779,7 +888,20 @@
         });
         clearPipeButton.addEventListener('click', () => { irrigationSystem.pipes = []; draw(); updatePipeLength(); });
         clearPathsButton.addEventListener('click', () => { pathSystem.paths = []; draw(); updateAllUI(); });
-        clearButton.addEventListener('click', () => { if(confirm('Tout effacer ?')){ placedPlants = []; irrigationSystem = {pipes:[]}; pathSystem = {paths:[]}; draw(); updateAllUI(); } });
+        clearMulchButton.addEventListener('click', () => { mulchSystem.polygons = []; mulchSystem.currentPolygon = []; draw(); updateAllUI(); });
+
+        finishPolygonButton.addEventListener('click', () => {
+            if (mulchSystem.currentPolygon.length > 2) {
+                mulchSystem.polygons.push([...mulchSystem.currentPolygon]);
+                mulchSystem.currentPolygon = [];
+                draw();
+                updateAllUI();
+            } else {
+                alert("Une zone de paillage doit avoir au moins 3 points.");
+            }
+        });
+
+        clearButton.addEventListener('click', () => { if(confirm('Tout effacer ?')){ placedPlants = []; irrigationSystem = {pipes:[]}; pathSystem = {paths:[]}; mulchSystem = {polygons:[], currentPolygon:[]}; draw(); updateAllUI(); } });
         exportButton.addEventListener('click', () => { const link = document.createElement('a'); link.download = 'plan_jardin.png'; link.href = canvas.toDataURL(); link.click(); });
         // Drag & drop etc.
         canvas.addEventListener('mousedown', (e) => {
@@ -832,7 +954,7 @@
                         pixelsPerMeter: pixelDist / realDist
                     };
                 }
-                
+
                 isScaling = false;
                 scaleStartPoint = null;
                 scaleCurrentMousePos = null; // Nettoyer la position
