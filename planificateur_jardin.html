@@ -250,13 +250,9 @@
             </details>
         </div>
         
-        <details>
-             <summary>Récapitulatif</summary>
-             <div class="details-content">
-                <div id="global-plant-count" style="font-weight:bold; margin-bottom:10px;"></div>
-                <div id="plant-list-container" style="max-height: 150px; overflow-y: auto;"></div>
-             </div>
-        </details>
+        <div id="global-plant-count" style="font-weight:bold; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px; background-color: #f8f9fa; text-align: center;">
+            Nombre total de plantes : 0
+        </div>
 
         <details>
             <summary>Actions</summary>
@@ -290,7 +286,6 @@
         const refDistanceInput = document.getElementById('refDistance');
         const addPlantTypeButton = document.getElementById('addPlantTypeButton');
         const plantTypesListDiv = document.getElementById('plant-types-list');
-        const plantListContainer = document.getElementById('plant-list-container');
         const globalPlantCountDiv = document.getElementById('global-plant-count');
         const saveButton = document.getElementById('saveButton');
         const loadButton = document.getElementById('loadButton');
@@ -406,7 +401,7 @@
         // ... (autres fonctions de mise à jour UI) ...
         function updateAllUI() {
             updatePlantTypesUI();
-            updatePlacedPlantsList();
+            updateGlobalPlantCount();
             updatePipeLength();
             updatePathLength();
             updateModeUI();
@@ -454,10 +449,8 @@
             pathInfo.textContent = `Longueur totale : ${totalMeterLength.toFixed(2)} m`;
         }
 
-        function updatePlacedPlantsList() {
+        function updateGlobalPlantCount() {
              globalPlantCountDiv.textContent = `Nombre total de plantes : ${placedPlants.length}`;
-             if(placedPlants.length === 0){ plantListContainer.innerHTML = 'Aucune plante.'; return; }
-             plantListContainer.innerHTML = '<ul>' + placedPlants.map((p,i) => `<li>${i+1}: ${p.typeName}</li>`).join('') + '</ul>';
         }
 
         function updateScaleInfo() {
