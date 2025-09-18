@@ -114,6 +114,7 @@
         canvas.mode-moving { cursor: grab; }
         canvas.mode-deleting { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' style='font-size: 24px;'><text y='24' x='0'>❌</text></svg>") 16 16, auto; }
         canvas.grid-placement-mode { cursor: cell; }
+        canvas.mode-paths { cursor: copy; }
 
         /* --- Emoji Picker --- */
         #emoji-picker {
@@ -167,6 +168,7 @@
             <div class="details-content button-group">
                 <button id="modePlantsButton" class="active-mode">Plantes</button>
                 <button id="modeIrrigationButton">Irrigation</button>
+                <button id="modePathsButton">Allées</button>
             </div>
         </details>
 
@@ -234,14 +236,23 @@
                 </div>
              </details>
         </div>
+
+        <div id="path-controls" style="display:none;">
+            <details open>
+                <summary>3. Allées</summary>
+                <div class="details-content">
+                    <label for="pathWidth">Largeur de l'allée (cm):</label>
+                    <input type="number" id="pathWidth" value="30" min="1">
+                    <p style="font-size:0.9em; margin: 10px 0 10px 0;">Cliquez pour dessiner les allées. Clic droit pour annuler le dernier point.</p>
+                    <div id="path-info">Longueur totale : 0.00 m</div>
+                    <button id="clearPathsButton" class="button-orange">Effacer les allées</button>
+                </div>
+            </details>
+        </div>
         
-        <details>
-             <summary>Récapitulatif</summary>
-             <div class="details-content">
-                <div id="global-plant-count" style="font-weight:bold; margin-bottom:10px;"></div>
-                <div id="plant-list-container" style="max-height: 150px; overflow-y: auto;"></div>
-             </div>
-        </details>
+        <div id="global-plant-count" style="font-weight:bold; padding: 10px; border: 1px solid var(--border-color); border-radius: 5px; background-color: #f8f9fa; text-align: center;">
+            Nombre total de plantes : 0
+        </div>
 
         <details>
             <summary>Actions</summary>
@@ -275,7 +286,6 @@
         const refDistanceInput = document.getElementById('refDistance');
         const addPlantTypeButton = document.getElementById('addPlantTypeButton');
         const plantTypesListDiv = document.getElementById('plant-types-list');
-        const plantListContainer = document.getElementById('plant-list-container');
         const globalPlantCountDiv = document.getElementById('global-plant-count');
         const saveButton = document.getElementById('saveButton');
         const loadButton = document.getElementById('loadButton');
@@ -295,6 +305,11 @@
         const plantModeDeleteButton = document.getElementById('plantModeDelete');
         const emojiPicker = document.getElementById('emoji-picker');
         const plantEmojiInput = document.getElementById('plantEmoji');
+        const modePathsButton = document.getElementById('modePathsButton');
+        const pathControls = document.getElementById('path-controls');
+        const pathWidthInput = document.getElementById('pathWidth');
+        const pathInfo = document.getElementById('path-info');
+        const clearPathsButton = document.getElementById('clearPathsButton');
 
         const GARDEN_EMOJIS = [
             '🍅', '🥕', '🥬', '🍓', '🌽', '🌶️', '🥦', '🍇', '🍉', '🌻', '🌳', '🥔',
@@ -307,7 +322,8 @@
         let scale = { pixels: 0, meters: 0, pixelsPerMeter: 0 };
         let plantTypes = {};
         let placedPlants = [];
-        let irrigationSystem = { pipes: [] }; // NOUVELLE STRUCTURE POUR L'IRRIGATION
+        let irrigationSystem = { pipes: [] };
+        let pathSystem = { paths: [] };
         let selectedPlantType = null;
         let mainMode = 'placing'; // 'placing' ou 'irrigation'
         let placementSubMode = 'single'; // 'single' ou 'grid'
@@ -335,6 +351,25 @@
             });
             irrigationSystem.pipes.forEach(pipe => pipe.forEach(p => { // Dessiner les points par-dessus
                 ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI); ctx.fillStyle = '#2980b9'; ctx.fill();
+            }));
+
+            // Dessin des allées
+            const pathWidthPx = scale.pixelsPerMeter > 0 ? (parseInt(pathWidthInput.value, 10) / 100) * scale.pixelsPerMeter : 0;
+            if (pathWidthPx > 0) {
+                pathSystem.paths.forEach(path => {
+                    if (path.length > 1) {
+                        ctx.beginPath();
+                        ctx.moveTo(path[0].x, path[0].y);
+                        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+                        ctx.strokeStyle = '#8B4513'; // Marron selle
+                        ctx.lineWidth = pathWidthPx;
+                        ctx.lineCap = 'round';
+                        ctx.stroke();
+                    }
+                });
+            }
+            pathSystem.paths.forEach(path => path.forEach(p => { // Dessiner les points par-dessus
+                ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI); ctx.fillStyle = '#654321'; ctx.fill();
             }));
 
             // Dessin des plantes (avec emojis)
@@ -366,8 +401,9 @@
         // ... (autres fonctions de mise à jour UI) ...
         function updateAllUI() {
             updatePlantTypesUI();
-            updatePlacedPlantsList();
+            updateGlobalPlantCount();
             updatePipeLength();
+            updatePathLength();
             updateModeUI();
             updateScaleInfo();
         }
@@ -402,10 +438,19 @@
             irrigationInfo.textContent = `Longueur totale : ${totalMeterLength.toFixed(2)} m`;
         }
 
-        function updatePlacedPlantsList() {
+        function updatePathLength() {
+            let totalPixelLength = 0;
+            pathSystem.paths.forEach(path => {
+                for (let i = 1; i < path.length; i++) {
+                    totalPixelLength += Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
+                }
+            });
+            const totalMeterLength = scale.pixelsPerMeter > 0 ? totalPixelLength / scale.pixelsPerMeter : 0;
+            pathInfo.textContent = `Longueur totale : ${totalMeterLength.toFixed(2)} m`;
+        }
+
+        function updateGlobalPlantCount() {
              globalPlantCountDiv.textContent = `Nombre total de plantes : ${placedPlants.length}`;
-             if(placedPlants.length === 0){ plantListContainer.innerHTML = 'Aucune plante.'; return; }
-             plantListContainer.innerHTML = '<ul>' + placedPlants.map((p,i) => `<li>${i+1}: ${p.typeName}</li>`).join('') + '</ul>';
         }
 
         function updateScaleInfo() {
@@ -436,13 +481,16 @@
         function updateModeUI() {
             plantControls.style.display = mainMode === 'placing' ? 'block' : 'none';
             irrigationControls.style.display = mainMode === 'irrigation' ? 'block' : 'none';
+            pathControls.style.display = mainMode === 'paths' ? 'block' : 'none';
+
             modePlantsButton.classList.toggle('active-mode', mainMode === 'placing');
             modeIrrigationButton.classList.toggle('active-mode', mainMode === 'irrigation');
+            modePathsButton.classList.toggle('active-mode', mainMode === 'paths');
             updateCanvasCursor();
         }
         
         function updateCanvasCursor() {
-            canvas.classList.remove('mode-placing', 'mode-irrigation', 'grid-placement-mode', 'mode-moving', 'mode-deleting');
+            canvas.classList.remove('mode-placing', 'mode-irrigation', 'grid-placement-mode', 'mode-moving', 'mode-deleting', 'mode-paths');
             if (mainMode === 'placing') {
                 if (placementSubMode === 'grid') {
                     canvas.classList.add('grid-placement-mode');
@@ -454,6 +502,8 @@
                 }
             } else if (mainMode === 'irrigation') {
                 canvas.classList.add('mode-irrigation');
+            } else if (mainMode === 'paths') {
+                canvas.classList.add('mode-paths');
             }
         }
         
@@ -512,6 +562,7 @@
 
         modePlantsButton.addEventListener('click', () => setMainMode('placing'));
         modeIrrigationButton.addEventListener('click', () => setMainMode('irrigation'));
+        modePathsButton.addEventListener('click', () => setMainMode('paths'));
 
         // --- Logique du sélecteur d'emojis ---
         function populateEmojiPicker() {
@@ -540,7 +591,7 @@
                 emojiPicker.classList.add('emoji-picker-hidden');
             }
         });
-
+        
         // --- GESTION DE LA SOURIS ---
         canvas.addEventListener('click', (e) => {
             if (isDragging || isScaling) return;
@@ -551,7 +602,7 @@
                 if (plantAction === 'placing') {
                     if (!selectedPlantType) return alert("Sélectionnez un type de plante.");
                     if (scale.pixelsPerMeter <= 0) return alert("Définissez l'échelle d'abord.");
-
+                    
                     if (placementSubMode === 'single') {
                         placeSinglePlant(pos);
                     } else {
@@ -577,8 +628,19 @@
                     if (irrigationSystem.pipes.length === 0) irrigationSystem.pipes.push([]);
                     irrigationSystem.pipes[irrigationSystem.pipes.length - 1].push(pos);
                 }
+            } else if (mainMode === 'paths') {
+                // La logique est similaire à l'irrigation, mais pour les allées
+                const existingPathPoint = findClosestPathVertex(pos, 10);
+                if (existingPathPoint) {
+                    pathSystem.paths.push([existingPathPoint]); // Nouvelle branche d'allée
+                } else {
+                    if (pathSystem.paths.length === 0) {
+                        pathSystem.paths.push([]); // Première allée
+                    }
+                    pathSystem.paths[pathSystem.paths.length - 1].push(pos);
+                }
             }
-
+            
             draw();
             updateAllUI();
         });
@@ -591,12 +653,19 @@
                 if (clicked) {
                     placedPlants.splice(clicked.index, 1);
                 }
-            }
+            } 
             else if (mainMode === 'irrigation' && irrigationSystem.pipes.length > 0) {
                 let lastPipe = irrigationSystem.pipes[irrigationSystem.pipes.length - 1];
                 if(lastPipe.length > 0) lastPipe.pop();
                 if(lastPipe.length <= 1) { // Si la branche n'a plus qu'un point (ou 0), on la supprime
                     irrigationSystem.pipes.pop();
+                }
+            }
+            else if (mainMode === 'paths' && pathSystem.paths.length > 0) {
+                let lastPath = pathSystem.paths[pathSystem.paths.length - 1];
+                if(lastPath.length > 0) lastPath.pop();
+                if(lastPath.length <= 1) { // Si la branche n'a plus qu'un point (ou 0), on la supprime
+                    pathSystem.paths.pop();
                 }
             }
             draw();
@@ -636,6 +705,17 @@
             }
             return null;
         }
+
+        function findClosestPathVertex(pos, maxDist) {
+            for (const path of pathSystem.paths) {
+                for (const point of path) {
+                    if (Math.hypot(pos.x - point.x, pos.y - point.y) < maxDist) {
+                        return point;
+                    }
+                }
+            }
+            return null;
+        }
         
         function getMousePos(canvas, evt) {
             const rect = canvas.getBoundingClientRect();
@@ -657,7 +737,7 @@
         // --- SAUVEGARDE ET CHARGEMENT ---
         saveButton.addEventListener('click', () => {
             const dataToSave = {
-                scale, plantTypes, placedPlants, irrigationSystem
+                scale, plantTypes, placedPlants, irrigationSystem, pathSystem
             };
             localStorage.setItem('gardenPlanAdvanced', JSON.stringify(dataToSave));
             alert('Plan sauvegardé !');
@@ -671,6 +751,7 @@
                 plantTypes = data.plantTypes;
                 placedPlants = data.placedPlants;
                 irrigationSystem = data.irrigationSystem || { pipes: [] }; // compatibilité
+                pathSystem = data.pathSystem || { paths: [] }; // compatibilité
                 draw();
                 updateAllUI();
                 alert("Plan chargé.");
@@ -697,7 +778,8 @@
             setScaleButton.classList.add('active-mode');
         });
         clearPipeButton.addEventListener('click', () => { irrigationSystem.pipes = []; draw(); updatePipeLength(); });
-        clearButton.addEventListener('click', () => { if(confirm('Tout effacer ?')){ placedPlants = []; irrigationSystem = {pipes:[]}; draw(); updateAllUI(); } });
+        clearPathsButton.addEventListener('click', () => { pathSystem.paths = []; draw(); updateAllUI(); });
+        clearButton.addEventListener('click', () => { if(confirm('Tout effacer ?')){ placedPlants = []; irrigationSystem = {pipes:[]}; pathSystem = {paths:[]}; draw(); updateAllUI(); } });
         exportButton.addEventListener('click', () => { const link = document.createElement('a'); link.download = 'plan_jardin.png'; link.href = canvas.toDataURL(); link.click(); });
         // Drag & drop etc.
         canvas.addEventListener('mousedown', (e) => {
@@ -750,7 +832,7 @@
                         pixelsPerMeter: pixelDist / realDist
                     };
                 }
-
+                
                 isScaling = false;
                 scaleStartPoint = null;
                 scaleCurrentMousePos = null; // Nettoyer la position
